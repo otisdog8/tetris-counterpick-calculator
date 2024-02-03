@@ -1,4 +1,5 @@
 import argparse
+import math
 from math import comb
 import pickle
 
@@ -8,6 +9,7 @@ set_first_to = 7
 match_result_key = (0, 0, 0, 0, 0, 0, 0, 0)
 search_method_key = (0, 0, 0, 0, 0, 0, 0, 1)
 win_prob_key = (0, 0, 0, 0, 0, 0, 0, 2)
+team_member_key = (0, 0, 0, 0, 0, 0, 0, 3)
 
 
 def print_labeled_array(array, row_labels, col_labels):
@@ -19,9 +21,21 @@ def print_labeled_array(array, row_labels, col_labels):
         print(row_str)
 
 
+def g(phi):
+    return 1 / math.sqrt(1 + 3 * (phi ** 2) / (math.pi ** 2))
+
+
+def E(mu1, mu2, phi1, phi2):
+    return 1 / (1 + math.exp(-g(math.sqrt(phi1 ** 2 + phi2 ** 2)) * (mu1 - mu2)))
+
+
+def win_probability(mu1, phi1, mu2, phi2):
+    return E(mu1, mu2, phi1, phi2)
+
+
 def find_round_probability(x):
     def expression(a):
-        return sum((1 - a)**n * a**7 * comb(6 + n, n) for n in range(7))
+        return sum((1 - a) ** n * a ** 7 * comb(6 + n, n) for n in range(7))
 
     # Binary search for a value in [0.0, 1.0] to get the expression result close to x
     lo, hi = 0.0, 1.0
@@ -32,11 +46,10 @@ def find_round_probability(x):
         else:
             hi = mid
 
-        if hi - lo < 1e-16:  # Convergence tolerance
+        if hi - lo < 1e-10:  # Convergence tolerance
             break
 
     return (lo + hi) / 2
-
 
 
 # Position description: (us_bitmask,them_bitmask,us_score,them_score,us_rounds,them_rounds,pick_state, who_picked)
@@ -218,7 +231,8 @@ def get_pick(player_map, prompt, mask):
         if players[i] & mask == 0:
             continue
         print(f"{i} {player_map[i]}")
-    return int(get_persistent(prompt, lambda x: x.isnumeric() and 0 <= int(x) < num_players and players[int(x)] & mask != 0))
+    return int(
+        get_persistent(prompt, lambda x: x.isnumeric() and 0 <= int(x) < num_players and players[int(x)] & mask != 0))
 
 
 def get_round_result(current_pos, player_us, player_them, us_map, them_map):
@@ -240,8 +254,9 @@ def get_round_result(current_pos, player_us, player_them, us_map, them_map):
     total_us_rounds = current_pos[4] + 1 if us_score == set_first_to else current_pos[4]
     total_them_rounds = current_pos[5] + 1 if them_score == set_first_to else current_pos[5]
     pick_state = 2 if us_score == set_first_to else 0
-    return (current_pos[0], current_pos[1], total_us_score, total_them_score, total_us_rounds, total_them_rounds,
-            pick_state, num_players)
+    return (
+    current_pos[0], current_pos[1], total_us_score, total_them_score, total_us_rounds, total_them_rounds, pick_state,
+    num_players)
 
 
 def main():
@@ -251,15 +266,40 @@ def main():
     parser.add_argument('--search-method', type=int, help='Method being used to search', required=True)
     parser.add_argument('--generate-new', action='store_true', help='Flag to generate new data')
     parser.add_argument('--search-root', action='store_true', help='Flag for whether to search from root or not')
-    parser.add_argument("--set-prob", action="store_true", help="Flag to set if testing probability of winning a round or a set")
+    parser.add_argument("--is-glicko", action="store_true", help="If this is set, input is actually glicko ratings")
+    parser.add_argument("--set-prob", action="store_true",
+                        help="Flag to set if testing probability of winning a round or a set")
 
     args = parser.parse_args()
+
+    with open(args.win_prob, "r") as wp:
+        lines = wp.readlines()
+        for i in range(len(lines)):
+            lines[i] = lines[i].strip()
+        our_team = lines[-2].split(",")
+        other_team = lines[-1].split(",")
+        if args.is_glicko:
+            # First row is our team glicko ratings
+            # Second row is our team rd
+            # Third row is their team glicko ratings
+            # Fourth row is their team rd
+            # Calculate win probability matrix
+            our_team_glicko = [float(i) for i in lines[0].split(",")]
+            our_team_rd = [float(i) for i in lines[1].split(",")]
+            their_team_glicko = [float(i) for i in lines[2].split(",")]
+            their_team_rd = [float(i) for i in lines[3].split(",")]
+            win_prob_arr = [
+                [win_probability(our_team_glicko[i], our_team_rd[i], their_team_glicko[j], their_team_rd[j]) for j in
+                 range(len(their_team_glicko))] for i in range(len(our_team_glicko))]
+        else:
+            win_prob_arr = [[float(j) for j in i.split(",")] for i in lines[:-2]]
 
     if args.generate_new:
         table = {}
         table[match_result_key] = {}
         table[search_method_key] = args.search_method
         table[win_prob_key] = args.win_prob
+        table[team_member_key] = (our_team, other_team)
     else:
         with open(args.saved_table, "rb") as of:
             table = pickle.load(of)
@@ -272,12 +312,9 @@ def main():
             if table[win_prob_key] != args.win_prob:
                 print("Win probability does not match")
                 return
-
-    with open(args.win_prob, "r") as wp:
-        lines = wp.readlines()
-        our_team = lines[-2].strip().split(",")
-        other_team = lines[-1].strip().split(",")
-        win_prob_arr = [[float(j) for j in i.split(",")] for i in lines[:-2]]
+            if table[team_member_key] != (our_team, other_team):
+                print("Team members do not match; you probably generated this table with different team members")
+                return
 
     if args.set_prob:
         for i in range(len(win_prob_arr)):
@@ -291,7 +328,7 @@ def main():
     # Print win probability table
     print_labeled_array(win_prob_arr, us_player_map, them_player_map)
 
-    starting_pos = (2**num_players - 1, 2**num_players - 1, 0, 0, 0, 0, 4, num_players)
+    starting_pos = (2 ** num_players - 1, 2 ** num_players - 1, 0, 0, 0, 0, 4, num_players)
 
     # Search from root
     if args.search_root:
@@ -341,8 +378,10 @@ def main():
         print("2. Move to a nearby position (enter moves from current position)")
         print("3. Query a match result")
         print("4. Analyze the position")
-        print("5. Quit")
-        choice = get_persistent("Enter choice: ", lambda x: x in ["1", "2", "3", "4", "5"])
+        print("5. Reset to starting position")
+        print("6. Export win probability array")
+        print("7. Quit")
+        choice = get_persistent("Enter choice: ", lambda x: x in ["1", "2", "3", "4", "5", "6", "7"])
         if choice == "1":
             # Move to a new position
             print("Enter new position")
@@ -372,7 +411,8 @@ def main():
             if pick_state == 1 or pick_state == 3:
                 print("Who got picked?")
                 who_got = get_pick(them_player_map if pick_state == 1 else us_player_map,
-                                   "Enter the number of the person who got picked first: ", current_pos[1] if pick_state == 1 else current_pos[0])
+                                   "Enter the number of the person who got picked first: ",
+                                   current_pos[1] if pick_state == 1 else current_pos[0])
             # Then move to the new position
             current_pos = (us_players, them_players, us_score, them_score, us_rounds, them_rounds, pick_state, who_got)
         elif choice == "2":
@@ -394,11 +434,11 @@ def main():
                 # Ask who got picked on our team
                 who_picked_us = get_pick(us_player_map, "Enter the number of the person we picked: ", current_pos[0])
                 # Ask who got picked on their team
-                who_picked_them = get_pick(them_player_map, "Enter the number of the person they picked: ", current_pos[1])
+                who_picked_them = get_pick(them_player_map, "Enter the number of the person they picked: ",
+                                           current_pos[1])
                 # Then move to the new position
-                current_pos = (
-                    current_pos[0] & ~players[who_picked_us], current_pos[1] & ~players[who_picked_them], current_pos[2],
-                    current_pos[3], current_pos[4], current_pos[5], 4, num_players)
+                current_pos = (current_pos[0] & ~players[who_picked_us], current_pos[1] & ~players[who_picked_them],
+                               current_pos[2], current_pos[3], current_pos[4], current_pos[5], 4, num_players)
                 current_pos = get_round_result(current_pos, who_picked_us, who_picked_them, us_player_map,
                                                them_player_map)
             elif current_pos[6] == 1:
