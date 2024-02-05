@@ -21,17 +21,13 @@ def print_labeled_array(array, row_labels, col_labels):
         print(row_str)
 
 
-def g(phi):
-    return 1 / math.sqrt(1 + 3 * (phi ** 2) / (math.pi ** 2))
+def win_probability(rating1, rd1, rating2, rd2):
+    q = math.log(10) / 400
+    g_rd2 = 1 / math.sqrt(1 + (3 * q ** 2 * rd2 ** 2) / (math.pi ** 2))
 
+    expected_score = 1 / (1 + 10 ** (g_rd2 * (rating1 - rating2) / -400))
 
-def E(mu1, mu2, phi1, phi2):
-    return 1 / (1 + math.exp(-g(math.sqrt(phi1 ** 2 + phi2 ** 2)) * (mu1 - mu2)))
-
-
-def win_probability(mu1, phi1, mu2, phi2):
-    return E(mu1, mu2, phi1, phi2)
-
+    return expected_score
 
 def find_round_probability(x):
     def expression(a):
@@ -500,6 +496,15 @@ def main():
                 print("We should pick: ", us_player_map[player])
             print("Win probability: ", win_prob)
         elif choice == "5":
+            current_pos = starting_pos
+        elif choice == "6":
+            with open("win_prob_export.csv", "w") as wp:
+                for row in win_prob_arr:
+                    wp.write(",".join(str(i) for i in row) + "\n")
+                # Write team names
+                wp.write(",".join(our_team) + "\n")
+                wp.write(",".join(other_team) + "\n")
+        elif choice == "7":
             break
         print("\n\n")
 
