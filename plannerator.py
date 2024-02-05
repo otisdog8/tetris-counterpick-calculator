@@ -29,6 +29,7 @@ def win_probability(rating1, rd1, rating2, rd2):
 
     return expected_score
 
+
 def find_round_probability(x):
     def expression(a):
         return sum((1 - a) ** n * a ** 7 * comb(6 + n, n) for n in range(7))
@@ -231,7 +232,33 @@ def get_pick(player_map, prompt, mask):
         get_persistent(prompt, lambda x: x.isnumeric() and 0 <= int(x) < num_players and players[int(x)] & mask != 0))
 
 
-def get_round_result(current_pos, player_us, player_them, us_map, them_map):
+def display_match(us_player, them_player, current_pos, table):
+    match_match_key = (
+        current_pos[0] & ~players[us_player], current_pos[1] & ~players[them_player], current_pos[2],
+        current_pos[3], current_pos[4], current_pos[5])
+    if match_match_key not in table[match_result_key]:
+        print("Match not found")
+    elif us_player not in table[match_result_key][match_match_key]:
+        print("Match not found")
+    elif them_player not in table[match_result_key][match_match_key][us_player]:
+        print("Match not found")
+    else:
+        print("Match found")
+        match = table[match_result_key][match_match_key][us_player][them_player]
+        print("Match result: ", match)
+        for i in range(0, set_first_to):
+            for j in range(0, set_first_to):
+                if match[(j, 7)] > match[(7, i)]:
+                    print(f"Throwing after they get to {i} points might be advantageous due to counterpicks")
+                    print(f"Make sure to get to at least {j} points before throwing")
+                    break
+
+
+def get_round_result(current_pos, player_us, player_them, us_map, them_map, table):
+    # Ask if they want to display the match first
+    display = get_persistent("Display match? (y/n): ", lambda x: x in ["y", "n"])
+    if display == "y":
+        display_match(player_us, player_them, current_pos)
     # Get the result of the round (score)
     while True:
         # Get our score
@@ -251,8 +278,9 @@ def get_round_result(current_pos, player_us, player_them, us_map, them_map):
     total_them_rounds = current_pos[5] + 1 if them_score == set_first_to else current_pos[5]
     pick_state = 2 if us_score == set_first_to else 0
     return (
-    current_pos[0], current_pos[1], total_us_score, total_them_score, total_us_rounds, total_them_rounds, pick_state,
-    num_players)
+        current_pos[0], current_pos[1], total_us_score, total_them_score, total_us_rounds, total_them_rounds,
+        pick_state,
+        num_players)
 
 
 def main():
@@ -318,7 +346,6 @@ def main():
         for i in range(len(win_prob_arr)):
             for j in range(len(win_prob_arr[i])):
                 win_prob_arr[i][j] = find_round_probability(win_prob_arr[i][j])
-
 
     us_player_map = {0: our_team[0], 1: our_team[1], 2: our_team[2], 3: our_team[3], 4: our_team[4]}
 
@@ -440,42 +467,26 @@ def main():
                 current_pos = (current_pos[0] & ~players[who_picked_us], current_pos[1] & ~players[who_picked_them],
                                current_pos[2], current_pos[3], current_pos[4], current_pos[5], 4, num_players)
                 current_pos = get_round_result(current_pos, who_picked_us, who_picked_them, us_player_map,
-                                               them_player_map)
+                                               them_player_map, table)
             elif current_pos[6] == 1:
                 who_got = get_pick(us_player_map, "Enter the number of the person we picked: ", current_pos[0])
                 current_pos = (
                     current_pos[0] & ~players[who_got], current_pos[1], current_pos[2], current_pos[3], current_pos[4],
                     current_pos[5], 2, current_pos[7])
-                current_pos = get_round_result(current_pos, who_got, current_pos[7], us_player_map, them_player_map)
+                current_pos = get_round_result(current_pos, who_got, current_pos[7], us_player_map, them_player_map,
+                                               table)
 
             elif current_pos[6] == 3:
                 who_got = get_pick(them_player_map, "Enter the number of the person they picked: ", current_pos[1])
                 current_pos = (
                     current_pos[0], current_pos[1] & ~players[who_got], current_pos[2], current_pos[3], current_pos[4],
                     current_pos[5], 0, current_pos[7])
-                current_pos = get_round_result(current_pos, current_pos[7], who_got, us_player_map, them_player_map)
+                current_pos = get_round_result(current_pos, current_pos[7], who_got, us_player_map, them_player_map,
+                                               table)
         elif choice == "3":
             us_player = get_pick(us_player_map, "Enter the number of the person on our team: ", current_pos[0])
             them_player = get_pick(them_player_map, "Enter the number of the person on their team: ", current_pos[1])
-            match_match_key = (
-                current_pos[0] & ~players[us_player], current_pos[1] & ~players[them_player], current_pos[2],
-                current_pos[3], current_pos[4], current_pos[5])
-            if match_match_key not in table[match_result_key]:
-                print("Match not found")
-            elif us_player not in table[match_result_key][match_match_key]:
-                print("Match not found")
-            elif them_player not in table[match_result_key][match_match_key][us_player]:
-                print("Match not found")
-            else:
-                print("Match found")
-                match = table[match_result_key][match_match_key][us_player][them_player]
-                print("Match result: ", match)
-                for i in range(0, set_first_to):
-                    for j in range(0, set_first_to):
-                        if match[(j, 7)] > match[(7, i)]:
-                            print(f"Throwing after they get to {i} points might be advantageous due to counterpicks")
-                            print(f"Make sure to get to at least {j} points before throwing")
-                            break
+            display_match(us_player, them_player, current_pos, table)
         elif choice == "4":
             if current_pos not in table:
                 print("Analyzing position")
