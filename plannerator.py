@@ -313,15 +313,19 @@ def main():
                 return
 
     if args.set_prob:
+        print("Set win probability")
+        print_labeled_array(win_prob_arr, our_team, other_team)
         for i in range(len(win_prob_arr)):
             for j in range(len(win_prob_arr[i])):
                 win_prob_arr[i][j] = find_round_probability(win_prob_arr[i][j])
+
 
     us_player_map = {0: our_team[0], 1: our_team[1], 2: our_team[2], 3: our_team[3], 4: our_team[4]}
 
     them_player_map = {0: other_team[0], 1: other_team[1], 2: other_team[2], 3: other_team[3], 4: other_team[4]}
 
     # Print win probability table
+    print("Round win probability")
     print_labeled_array(win_prob_arr, us_player_map, them_player_map)
 
     starting_pos = (2 ** num_players - 1, 2 ** num_players - 1, 0, 0, 0, 0, 4, num_players)
